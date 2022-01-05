@@ -72,7 +72,7 @@ pub fn get_processor(ver1: u8, ver2: u8) -> Option<&'static str> {
         [0x04, 0x1E] => Some("Picasso"),        // Ryzen 3XXX (APU)
         [0x00, 0x25] => Some("Raven Ridge 2"),  // Ryzen 2XXX (APU - Refresh)
         [0x00, 0x1E] => Some("Raven Ridge"),    // Ryzen 2XXX (APU)
-        
+
         [0x04, 0x24] => Some("Castle Peak"),    // Threadripper 3XXX
         [0x04, 0x2B] => Some("Colfax"),         // Threadripper 2XXX
         [0x04, 0x19] => Some("Whitehaven"),     // Threadripper 1XXX (also matches Naples - EPYC 7001)
