@@ -186,9 +186,7 @@ fn main() {
 
     let agesa = find_pattern(&data, r"(AGESA![0-9a-zA-Z]{0,10}\x00{0,1}[0-9a-zA-Z .\-]+)")
         .into_iter()
-        .map(|(_, x)| {
-            x.into_iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>()
-        })
+        .map(|(_, x)| x.iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>())
         .collect::<Vec<String>>();
 
     if !agesa.is_empty() {
