@@ -60,25 +60,25 @@ pub fn find_pattern<'a>(data: &'a [u8], pattern: &str) -> Vec<(usize, &'a [u8])>
         .collect()
 }
 
-pub fn get_processor(ver1: u8, ver2: u8) -> Option<String> {
+pub fn get_processor(ver1: u8, ver2: u8) -> Option<&'static str> {
     match [ver1, ver2] {
-        [0x00, 0x38] => Some("Vermeer".to_string()),        // Ryzen 5XXX
-        [0x00, 0x2E] => Some("Matisse".to_string()),        // Ryzen 3XXX
-        [0x00, 0x2B] => Some("Pinnacle Ridge".to_string()), // Ryzen 2XXX
-        [0x00, 0x19] => Some("Summit Ridge".to_string()),   // Ryzen 1XXX
+        [0x00, 0x38] => Some("Vermeer"),        // Ryzen 5XXX
+        [0x00, 0x2E] => Some("Matisse"),        // Ryzen 3XXX
+        [0x00, 0x2B] => Some("Pinnacle Ridge"), // Ryzen 2XXX
+        [0x00, 0x19] => Some("Summit Ridge"),   // Ryzen 1XXX
 
-        [0x00, 0x40] => Some("Cezanne".to_string()),        // Ryzen 5XXX (APU)
-        [0x00, 0x37] => Some("Renoir".to_string()),         // Ryzen 4XXX (APU)
-        [0x04, 0x1E] => Some("Picasso".to_string()),        // Ryzen 3XXX (APU)
-        [0x00, 0x25] => Some("Raven Ridge 2".to_string()),  // Ryzen 2XXX (APU - Refresh)
-        [0x00, 0x1E] => Some("Raven Ridge".to_string()),    // Ryzen 2XXX (APU)
-        
-        [0x04, 0x24] => Some("Castle Peak".to_string()),    // Threadripper 3XXX
-        [0x04, 0x2B] => Some("Colfax".to_string()),         // Threadripper 2XXX
-        [0x04, 0x19] => Some("Whitehaven".to_string()),     // Threadripper 1XXX (also matches Naples - EPYC 7001)
+        [0x00, 0x40] => Some("Cezanne"),        // Ryzen 5XXX (APU)
+        [0x00, 0x37] => Some("Renoir"),         // Ryzen 4XXX (APU)
+        [0x04, 0x1E] => Some("Picasso"),        // Ryzen 3XXX (APU)
+        [0x00, 0x25] => Some("Raven Ridge 2"),  // Ryzen 2XXX (APU - Refresh)
+        [0x00, 0x1E] => Some("Raven Ridge"),    // Ryzen 2XXX (APU)
 
-        [0x00, 0x24] => Some("Rome".to_string()),           // EPYC 7003
-        [0x00, 0x2D] => Some("Milan".to_string()),          // EPYC 7002
+        [0x04, 0x24] => Some("Castle Peak"),    // Threadripper 3XXX
+        [0x04, 0x2B] => Some("Colfax"),         // Threadripper 2XXX
+        [0x04, 0x19] => Some("Whitehaven"),     // Threadripper 1XXX (also matches Naples - EPYC 7001)
+
+        [0x00, 0x24] => Some("Rome"),           // EPYC 7003
+        [0x00, 0x2D] => Some("Milan"),          // EPYC 7002
         _ => None,
     }
 }
@@ -145,7 +145,7 @@ pub fn parse_directory(data: &[u8], address: usize, offset: usize, smus: &mut Ve
                             };
 
                             let processor = get_processor(version[0x3], version[0x2])
-                                .unwrap_or("Unknown".to_string());
+                                .unwrap_or("Unknown");
 
                             log::info!(
                                 "Location {:08X}, Size {:08X} ({:<3} KB) // {} {}",
@@ -184,19 +184,17 @@ fn main() {
 
     log::info!("BIOS: {}", file_name);
 
-    let agesa = find_pattern(&data, "(AGESA![0-9a-zA-Z]{0,10}\\x00{0,1}[0-9a-zA-Z .\\-]+)")
+    let agesa = find_pattern(&data, r"(AGESA![0-9a-zA-Z]{0,10}\x00{0,1}[0-9a-zA-Z .\-]+)")
         .into_iter()
-        .map(|(_, x)| {
-            x.into_iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>()
-        })
+        .map(|(_, x)| x.iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>())
         .collect::<Vec<String>>();
 
-    if agesa.len() > 0 {
+    if !agesa.is_empty() {
         log::info!("AGESA: {:?}", agesa);
     }
 
-    let fet_headers = find_pattern(&data, "\\xFF{16}(\\xAA\\x55\\xAA\\x55.{76})\\xFF{16}");
-    if fet_headers.len() == 0 {
+    let fet_headers = find_pattern(&data, r"\xFF{16}(\xAA\x55\xAA\x55.{76})\xFF{16}");
+    if fet_headers.is_empty() {
         panic!("Could not find FET header(s)!");
     }
 
