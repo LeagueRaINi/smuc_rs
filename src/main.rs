@@ -184,7 +184,7 @@ fn main() {
 
     log::info!("BIOS: {}", file_name);
 
-    let agesa = find_pattern(&data, "(AGESA![0-9a-zA-Z]{0,10}\\x00{0,1}[0-9a-zA-Z .\\-]+)")
+    let agesa = find_pattern(&data, r"(AGESA![0-9a-zA-Z]{0,10}\x00{0,1}[0-9a-zA-Z .\-]+)")
         .into_iter()
         .map(|(_, x)| {
             x.into_iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>()
@@ -195,7 +195,7 @@ fn main() {
         log::info!("AGESA: {:?}", agesa);
     }
 
-    let fet_headers = find_pattern(&data, "\\xFF{16}(\\xAA\\x55\\xAA\\x55.{76})\\xFF{16}");
+    let fet_headers = find_pattern(&data, r"\xFF{16}(\xAA\x55\xAA\x55.{76})\xFF{16}");
     if fet_headers.len() == 0 {
         panic!("Could not find FET header(s)!");
     }
