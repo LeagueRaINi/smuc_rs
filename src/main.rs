@@ -191,12 +191,12 @@ fn main() {
         })
         .collect::<Vec<String>>();
 
-    if agesa.len() > 0 {
+    if !agesa.is_empty() {
         log::info!("AGESA: {:?}", agesa);
     }
 
     let fet_headers = find_pattern(&data, r"\xFF{16}(\xAA\x55\xAA\x55.{76})\xFF{16}");
-    if fet_headers.len() == 0 {
+    if fet_headers.is_empty() {
         panic!("Could not find FET header(s)!");
     }
 
