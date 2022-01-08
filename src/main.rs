@@ -122,6 +122,7 @@ pub fn get_processor_arch(ver1: u8, ver2: u8) -> Option<&'static str> {
 }
 
 pub fn parse_directory(data: &[u8], address: usize, offset: usize, smus: &mut Vec<usize>) {
+    // amd saves the address memory aligned so we need to convert them
     let convert_address = |address: usize| (address & 0x00FFFFFF) + offset;
 
     let address = convert_address(address);
@@ -199,14 +200,23 @@ fn main() {
     pretty_env_logger::init();
 
     let args: Vec<String> = env::args().collect();
+    let path = if cfg!(debug_assertions) {
+        Path::new("./resources/E7B78AMS.2H6")
+    } else {
+        if args.len() < 2 {
+            log::error!("No file specified");
+            return;
+        }
 
-    let path = Path::new(&args[1]);
-    let file_name = path.file_name().unwrap().to_str().unwrap();
+        Path::new(&args[1])
+    };
 
-    let data = fs::read(path).unwrap();
+    let file_name = path.file_name().expect("Could not get file name");
+    let data = fs::read(path).expect("Could not read file");
 
-    log::info!("BIOS: {} ({} KB)", file_name, data.len() / 1024);
+    log::info!("BIOS: {} ({} KB)", file_name.to_str().unwrap(), data.len() / 1024);
 
+    // TODO!: this doesnt detect all smu strings
     let agesa = find_pattern(&data, r"(AGESA![0-9a-zA-Z]{0,10}\x00{0,1}[0-9a-zA-Z .\-]+)")
         .into_iter()
         .map(|(_, x)| x.iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>())
@@ -221,6 +231,8 @@ fn main() {
         panic!("Could not find FET header(s)!");
     }
 
+    // TODO!: get rid of this by making a parse_smus method that recursively parses the directories and
+    // returns Vec<PspDirectoryEntry>
     let mut smus: Vec<usize> = Vec::new();
 
     for (addr, bytes) in fet_headers {
@@ -228,7 +240,7 @@ fn main() {
             match try_from_bytes::<FirmwareEntryTable>(&bytes[..size_of::<FirmwareEntryTable>()]) {
                 Ok(x) => x,
                 _ => {
-                    log::error!("Could not parse FET header at {:08X}", addr);
+                    log::error!("Could not parse fet header at {:08X}", addr);
                     continue;
                 },
             };
