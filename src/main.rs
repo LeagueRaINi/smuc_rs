@@ -84,6 +84,59 @@ struct ComboDirectoryEntry {
     pub location: u64,
 }
 
+// TODO!: i have no idea if these names are reasonable but its what copilot suggested :lul:
+#[derive(Debug, Copy, Clone, Pod, Zeroable)]
+#[repr(C)]
+struct Version {
+    build: u8,
+    micro: u8,
+    minor: u8,
+    major: u8,
+}
+
+impl Version {
+    pub fn is_zero(&self) -> bool {
+        self.build == 0 && self.micro == 0 && self.minor == 0 && self.major == 0
+    }
+    pub fn as_str(&self) -> String {
+        format!("{}.{}.{}.{}", self.major, self.minor, self.micro, self.build)
+    }
+}
+
+#[derive(Debug, Copy, Clone, Pod, Zeroable)]
+#[repr(C)]
+struct PspEntryHeader {
+    pub rsvd_0: [u8; 0x10],
+    pub id: u32,
+    pub rsvd_14: [u8; 0x1e],
+    pub rsvd_32: [u8; 0x1e],
+    pub size: u32,
+    pub rsvd_54: [u8; 0xc],
+    pub version: Version,
+}
+
+impl PspEntryHeader {
+    pub fn new(data: &[u8]) -> Option<PspEntryHeader> {
+        match try_from_bytes::<PspEntryHeader>(&data[..size_of::<Self>()]) {
+            Ok(header) => Some(*header),
+            _ => None,
+        }
+    }
+
+    pub fn get_version(&self) -> Version {
+        if self.version.is_zero() {
+            Version {
+                build: self.rsvd_0[0],
+                micro: self.rsvd_0[1],
+                minor: self.rsvd_0[2],
+                major: self.rsvd_0[3],
+            }
+        } else {
+            self.version
+        }
+    }
+}
+
 make_dir!(ComboDirectory, ComboDirectoryHeader, ComboDirectoryEntry);
 make_dir!(PspDirectory, DirectoryHeader, PspDirectoryEntry);
 
@@ -98,8 +151,8 @@ pub fn find_pattern<'a>(data: &'a [u8], pattern: &str) -> Vec<(usize, &'a [u8])>
         .collect()
 }
 
-pub fn get_processor_arch(ver1: u8, ver2: u8) -> Option<&'static str> {
-    match [ver1, ver2] {
+pub fn get_processor_arch(major: u8, minor: u8) -> Option<&'static str> {
+    match [major, minor] {
         [0x00, 0x38] => Some("Vermeer"),        // Ryzen 5XXX
         [0x00, 0x2E] => Some("Matisse"),        // Ryzen 3XXX
         [0x00, 0x2B] => Some("Pinnacle Ridge"), // Ryzen 2XXX
@@ -161,26 +214,24 @@ pub fn parse_directory(data: &[u8], address: usize, offset: usize, smus: &mut Ve
                             return;
                         }
 
-                        let version = {
-                            let bytes = &data[location + 0x60..][..4];
-                            if bytes == [0x00, 0x00, 0x00, 0x00] {
-                                &data[location..][..0x4]
-                            } else {
-                                bytes
-                            }
-                        };
+                        match PspEntryHeader::new(&data[location..]) {
+                            Some(entry_header) => {
+                                let version = entry_header.get_version();
 
-                        log::info!(
-                            "Location {:08X}, Size {:08X} ({:<3} KB) // {} {}",
-                            location,
-                            entry.size,
-                            entry.size / 1024,
-                            format!(
-                                "{:02}.{:02}.{:02}.{:02} ({0:02X}.{1:02X}.{2:02X}.{3:02X})",
-                                version[0x3], version[0x2], version[0x1], version[0x00]
-                            ),
-                            get_processor_arch(version[0x3], version[0x2]).unwrap_or("Unknown"),
-                        );
+                                log::info!(
+                                    "Location {:08X}, Size {:08X} ({:<3} KB) // {} {}",
+                                    location,
+                                    entry.size,
+                                    entry.size / 1024,
+                                    version.as_str(),
+                                    get_processor_arch(version.major, version.minor)
+                                        .unwrap_or("Unknown"),
+                                );
+                            },
+                            _ => {
+                                log::error!("Failed to parse psp entry header at {:08X}", location);
+                            },
+                        }
 
                         smus.push(location);
                     },
