@@ -1,5 +1,6 @@
 use std::mem::size_of;
 
+use anyhow::{bail, Context, Result};
 use bytemuck::{try_from_bytes, Pod, Zeroable};
 use static_assertions::assert_eq_size;
 
@@ -65,8 +66,13 @@ pub struct PspEntryHeader {
 }
 
 impl PspEntryHeader {
-    pub fn new(data: &[u8]) -> Option<&PspEntryHeader> {
-        try_from_bytes::<PspEntryHeader>(data.get(..size_of::<Self>())?).ok()
+    pub fn new(data: &[u8]) -> Result<&PspEntryHeader> {
+        let data = match data.get(..size_of::<Self>()) {
+            None => bail!("Could not fetch PSP entry header"),
+            Some(data) => data,
+        };
+
+        try_from_bytes::<PspEntryHeader>(data).context("Could not parse PSP entry header")
     }
 
     pub fn get_version(&self) -> Version {

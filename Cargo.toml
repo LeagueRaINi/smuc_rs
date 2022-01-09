@@ -9,5 +9,6 @@ edition = "2021"
 pretty_env_logger = "0.4"
 log = { version = "0.4", features = ["release_max_level_info"] }
 regex = "1.3"
-bytemuck = { version ="1.7", features = ["derive", "min_const_generics"] }
+bytemuck = { version ="1.7", features = ["extern_crate_std", "derive", "min_const_generics"] }
 static_assertions = "1.1"
+anyhow = "1.0.52"

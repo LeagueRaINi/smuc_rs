@@ -1,29 +1,30 @@
-use std::collections::BTreeMap;
+use anyhow::{anyhow, Error, Result};
 use std::iter;
 
 use crate::structs::{ComboDirectory, PspDirectory, PspDirectoryEntry, PspEntryHeader};
 use crate::utils::resolve_location;
 
-type EntryIter<'a> = Box<dyn Iterator<Item = (usize, &'a PspEntryHeader)> + 'a>;
+type Iter<'a> = Box<dyn Iterator<Item = (usize, Result<&'a PspEntryHeader>)> + 'a>;
 
-fn parse_combo_directory(data: &[u8], address: usize, offset: usize) -> EntryIter<'_> {
-    let directory = match ComboDirectory::new(address, data) {
-        Some(directory) => directory,
-        None => {
-            log::error!("Failed to parse combo directory at {:08X}", address);
-            return Box::new(iter::empty());
-        },
-    };
-
-    Box::new(
-        directory
-            .entries
-            .into_iter()
-            .flat_map(move |e| parse_directory(data, e.location as usize, offset)),
-    )
+fn header(location: usize, header: &PspEntryHeader) -> Iter<'_> {
+    Box::new(iter::once((location, Ok(header))))
 }
 
-fn parse_psp_entry<'a>(data: &'a [u8], entry: &PspDirectoryEntry, offset: usize) -> EntryIter<'a> {
+fn error<'a>(location: usize, error: Error) -> Iter<'a> {
+    Box::new(iter::once((location, Err(error))))
+}
+
+fn parse_combo_directory(data: &[u8], address: usize, offset: usize) -> Iter<'_> {
+    let directory = match ComboDirectory::new(address, data) {
+        Err(err) => return error(address, err),
+        Ok(directory) => directory,
+    };
+
+    let entries = directory.entries.into_iter();
+    Box::new(entries.flat_map(move |e| parse_directory(data, e.location as usize, offset)))
+}
+
+fn parse_psp_entry<'a>(data: &'a [u8], entry: &PspDirectoryEntry, offset: usize) -> Iter<'a> {
     match entry.kind {
         // PSP Level 2 Directory
         0x40 | 0x70 => parse_directory(data, entry.location as usize, offset),
@@ -31,40 +32,45 @@ fn parse_psp_entry<'a>(data: &'a [u8], entry: &PspDirectoryEntry, offset: usize)
         0x08 | 0x12 => {
             let location = resolve_location(entry.location as usize, offset);
 
-            match PspEntryHeader::new(&data[location..]) {
-                Some(entry_header) => Box::new(iter::once((location, entry_header))),
-                None => {
-                    log::error!("Failed to parse psp entry header at {:08X}", location);
-                    Box::new(iter::empty())
-                },
-            }
+            let data = match data.get(location..) {
+                None => return error(location, anyhow!("Could not fetch PSP entry header")),
+                Some(data) => data,
+            };
+
+            let entry_header = match PspEntryHeader::new(data) {
+                Err(err) => return error(location, err),
+                Ok(entry_header) => entry_header,
+            };
+
+            header(location, entry_header)
         },
+        // Irrelevant for us
         _ => Box::new(iter::empty()),
     }
 }
 
-fn parse_psp_directory(data: &[u8], address: usize, offset: usize) -> EntryIter<'_> {
-    match PspDirectory::new(address, data) {
-        Some(directory) => Box::new(
-            directory
-                .entries
-                .into_iter()
-                .flat_map(move |entry| parse_psp_entry(data, entry, offset)),
-        ),
-        None => {
-            log::error!("Failed to parse psp directory at {:08X}", address);
-            Box::new(iter::empty())
-        },
-    }
+fn parse_psp_directory(data: &[u8], address: usize, offset: usize) -> Iter<'_> {
+    let directory = match PspDirectory::new(address, data) {
+        Ok(directory) => directory,
+        Err(err) => return error(address, err),
+    };
+
+    Box::new(directory.entries.into_iter().flat_map(move |e| parse_psp_entry(data, e, offset)))
 }
 
-fn parse_directory(data: &[u8], address: usize, offset: usize) -> EntryIter<'_> {
+fn parse_directory(data: &[u8], address: usize, offset: usize) -> Iter<'_> {
     let address = resolve_location(address, offset);
-
     match &data[address..][..4] {
         b"2PSP" => parse_combo_directory(data, address, offset),
         b"$PSP" | b"$PL2" => parse_psp_directory(data, address, offset),
-        header => unimplemented!("Unknown directory header at {:08X}: {:?}", address, header),
+        sig => error(
+            address,
+            anyhow!(
+                "Unknown PSP entry signature: {} ({:#x})",
+                std::str::from_utf8(sig).unwrap_or("<invalid>"),
+                u32::from_be_bytes([sig[0], sig[1], sig[2], sig[3]]),
+            ),
+        ),
     }
 }
 
@@ -72,6 +78,9 @@ pub fn parse_directories(
     data: &[u8],
     address: usize,
     offset: usize,
-) -> BTreeMap<usize, &PspEntryHeader> {
-    parse_directory(data, address, offset).collect()
+) -> Vec<(usize, Result<&PspEntryHeader>)> {
+    let mut vec = parse_directory(data, address, offset).collect::<Vec<_>>();
+    vec.sort_by_key(|&(location, _)| location);
+    vec.dedup_by_key(|&mut (location, _)| location);
+    vec
 }

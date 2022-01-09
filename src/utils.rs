@@ -1,5 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 use regex::bytes::Regex;
+use std::cmp::Ordering;
 use std::fmt;
 
 pub fn find_pattern<'a>(data: &'a [u8], pattern: &str) -> Vec<(usize, &'a [u8])> {
@@ -18,7 +19,7 @@ pub fn resolve_location(location: usize, offset: usize) -> usize {
     (location & 0x00FFFFFF) + offset
 }
 
-#[derive(Debug, Copy, Clone, Pod, Zeroable)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Pod, Zeroable)]
 #[repr(C)]
 pub struct Version {
     pub build: u8,
@@ -30,6 +31,22 @@ pub struct Version {
 impl Version {
     pub fn is_zero(&self) -> bool {
         self.build == 0 && self.micro == 0 && self.minor == 0 && self.major == 0
+    }
+}
+
+impl PartialOrd for Version {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Version {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        Ordering::Equal
+            .then(self.major.cmp(&other.major))
+            .then(self.minor.cmp(&other.minor))
+            .then(self.micro.cmp(&other.micro))
+            .then(self.build.cmp(&other.build))
     }
 }
 

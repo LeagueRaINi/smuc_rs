@@ -4,17 +4,19 @@ mod structs;
 mod utils;
 mod version;
 
+use std::cmp::Ordering;
 use std::mem::size_of;
 use std::path::Path;
 use std::{env, fs};
 
+use anyhow::{bail, Result};
 use bytemuck::try_from_bytes;
 
 use crate::parsers::parse_directories;
 use crate::structs::FirmwareEntryTable;
 use crate::utils::find_pattern;
 
-fn main() {
+fn main() -> Result<()> {
     env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or_else(|_| "info".into()));
     pretty_env_logger::init();
 
@@ -23,8 +25,7 @@ fn main() {
         Path::new("./resources/E7B78AMS.2H6")
     } else {
         if args.len() < 2 {
-            log::error!("No file specified");
-            return;
+            bail!("No file specified");
         }
 
         Path::new(&args[1])
@@ -47,28 +48,57 @@ fn main() {
 
     let fet_headers = find_pattern(&data, r"\xFF{16}(\xAA\x55\xAA\x55.{76})\xFF{16}");
     if fet_headers.is_empty() {
-        panic!("Could not find FET header(s)!");
+        bail!("Could not find FET header(s)!");
     }
 
     for (addr, bytes) in fet_headers {
-        let fet =
-            match try_from_bytes::<FirmwareEntryTable>(&bytes[..size_of::<FirmwareEntryTable>()]) {
-                Ok(x) => x,
-                _ => {
-                    log::error!("Could not parse fet header at {:08X}", addr);
-                    continue;
-                },
-            };
+        let bytes = match bytes.get(..size_of::<FirmwareEntryTable>()) {
+            Some(bytes) => bytes,
+            None => {
+                log::error!("Could not fetch FET header at {:08X}", addr);
+                continue;
+            },
+        };
 
-        for (location, entry) in parse_directories(&data, fet.psp as usize, addr - 0x20000) {
-            log::info!(
-                "Location {:08X}, Size {:08X} ({:>3} KB) // {:X} {}",
-                location,
-                entry.packed_size,
-                entry.packed_size / 1024,
-                entry.get_version(),
-                entry.try_get_processor_arch().unwrap_or("Unknown"),
-            );
+        let fet = match try_from_bytes::<FirmwareEntryTable>(bytes) {
+            Ok(fet) => fet,
+            Err(e) => {
+                log::error!("Could not parse FET header at {:08X} ({:?})", addr, e);
+                continue;
+            },
+        };
+
+        // TODO: Collect entries from all FET headers before sorting and printing them?
+        let mut entries = parse_directories(&data, fet.psp as usize, addr - 0x20000);
+
+        // Sort entries
+        entries.sort_by(|(l_loc, l_res), (r_loc, r_res)| match (l_res, r_res) {
+            // Sort by version, then by location (lower first)
+            (Ok(l), Ok(r)) => l.get_version().cmp(&r.get_version()).then(l_loc.cmp(r_loc)),
+            // Sort valid entries before errors
+            (Ok(_), Err(_)) => Ordering::Less,
+            (Err(_), Ok(_)) => Ordering::Greater,
+            // Sort errors by location (lower first)
+            (Err(_), Err(_)) => l_loc.cmp(r_loc),
+        });
+
+        // Print entries and errors
+        for (location, entry) in entries {
+            match entry {
+                Err(error) => log::error!("Location {:08X}, {:?}", location, error),
+                Ok(entry) => {
+                    log::info!(
+                        "Location {:08X}, Size {:08X} ({:>3} KB) // {:X} {}",
+                        location,
+                        entry.packed_size,
+                        entry.packed_size / 1024,
+                        entry.get_version(),
+                        entry.try_get_processor_arch().unwrap_or("Unknown"),
+                    );
+                },
+            }
         }
     }
+
+    Ok(())
 }
