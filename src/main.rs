@@ -6,33 +6,32 @@ mod version;
 
 use std::cmp::Ordering;
 use std::mem::size_of;
-use std::path::Path;
+use std::path::PathBuf;
 use std::{env, fs};
 
 use anyhow::{bail, Result};
 use bytemuck::try_from_bytes;
+use clap::Parser;
 
 use crate::parsers::parse_directories;
 use crate::structs::FirmwareEntryTable;
 use crate::utils::find_pattern;
 
+#[derive(Parser, Debug)]
+#[clap(about, author, version)]
+struct Opt {
+    #[cfg_attr(debug_assertions, structopt(default_value = "./resources/E7B78AMS.2H6"))]
+    path: PathBuf,
+}
+
 fn main() -> Result<()> {
     env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or_else(|_| "info".into()));
     pretty_env_logger::init();
 
-    let args: Vec<String> = env::args().collect();
-    let path = if cfg!(debug_assertions) {
-        Path::new("./resources/E7B78AMS.2H6")
-    } else {
-        if args.len() < 2 {
-            bail!("No file specified");
-        }
-
-        Path::new(&args[1])
-    };
+    let Opt { path } = Opt::parse();
 
     let file_name = path.file_name().expect("Could not get file name");
-    let data = fs::read(path).expect("Could not read file");
+    let data = fs::read(&path).expect("Could not read file");
 
     log::info!("BIOS: {} ({} KB)", file_name.to_str().unwrap(), data.len() / 1024);
 
