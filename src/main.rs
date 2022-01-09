@@ -4,6 +4,7 @@ use std::{env, fs};
 
 use bytemuck::{try_from_bytes, Pod, Zeroable};
 use regex::bytes::Regex;
+use static_assertions::assert_eq_size;
 
 macro_rules! make_dir {
     ($visibility:vis $name:ident, $header_type:ty, $entry_type:ty) => {
@@ -50,20 +51,22 @@ struct FirmwareEntryTable {
 #[repr(C)]
 struct DirectoryHeader {
     pub signature: [u8; 0x4],
-    pub checksum: u32,
+    pub checksum: [u8; 0x4],
     pub entries: u32,
     pub rsvd_0c: [u8; 0x4],
 }
+assert_eq_size!([u8; 0x10], DirectoryHeader);
 
 #[derive(Debug, Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
 struct ComboDirectoryHeader {
     pub signature: [u8; 0x4],
-    pub checksum: u32,
+    pub checksum: [u8; 0x4],
     pub entries: u32,
     pub look_up_mode: u32,
     pub rsvd_10: [u8; 0x10],
 }
+assert_eq_size!([u8; 0x20], ComboDirectoryHeader);
 
 #[derive(Debug, Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
@@ -75,6 +78,7 @@ struct PspDirectoryEntry {
     pub size: u32,
     pub location: u64,
 }
+assert_eq_size!([u8; 0x10], PspDirectoryEntry);
 
 #[derive(Debug, Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
@@ -83,6 +87,7 @@ struct ComboDirectoryEntry {
     pub id: u32,
     pub location: u64,
 }
+assert_eq_size!([u8; 0x10], ComboDirectoryEntry);
 
 // TODO!: i have no idea if these names are reasonable but its what copilot suggested :lul:
 #[derive(Debug, Copy, Clone, Pod, Zeroable)]
@@ -107,13 +112,14 @@ impl Version {
 #[repr(C)]
 struct PspEntryHeader {
     pub rsvd_0: [u8; 0x10],
-    pub id: u32,
-    pub rsvd_14: [u8; 0x1e],
-    pub rsvd_32: [u8; 0x1e],
+    pub signature: [u8; 0x4],
+    pub rsvd_14: [u8; 0x3c],
     pub size: u32,
     pub rsvd_54: [u8; 0xc],
     pub version: Version,
+    pub rsvd_64: [u8; 0x9c],
 }
+assert_eq_size!([u8; 0x100], PspEntryHeader);
 
 impl PspEntryHeader {
     pub fn new(data: &[u8]) -> Option<PspEntryHeader> {
@@ -267,7 +273,7 @@ fn main() {
 
     log::info!("BIOS: {} ({} KB)", file_name.to_str().unwrap(), data.len() / 1024);
 
-    // TODO!: this doesnt detect all smu strings
+    // TODO!: this doesnt detect all smu strings (tho in the roms where it doesnt i also couldnt find any tbh)
     let agesa = find_pattern(&data, r"(AGESA![0-9a-zA-Z]{0,10}\x00{0,1}[0-9a-zA-Z .\-]+)")
         .into_iter()
         .map(|(_, x)| x.iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>())
