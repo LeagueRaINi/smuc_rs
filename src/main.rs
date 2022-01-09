@@ -225,7 +225,7 @@ pub fn parse_directory(data: &[u8], address: usize, offset: usize, smus: &mut Ve
                                 let version = entry_header.get_version();
 
                                 log::info!(
-                                    "Location {:08X}, Size {:08X} ({:<3} KB) // {} {}",
+                                    "Location {:08X}, Size {:08X} ({:>3} KB) // {} {}",
                                     location,
                                     entry.size,
                                     entry.size / 1024,
