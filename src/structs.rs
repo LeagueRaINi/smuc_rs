@@ -1,3 +1,5 @@
+use core::fmt;
+use std::cmp::Ordering;
 use std::mem::size_of;
 
 use anyhow::{bail, Context, Result};
@@ -5,7 +7,55 @@ use bytemuck::{try_from_bytes, Pod, Zeroable};
 use static_assertions::assert_eq_size;
 
 use crate::make_dir;
-use crate::utils::Version;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Pod, Zeroable)]
+#[repr(C)]
+pub struct Version {
+    pub build: u8,
+    pub micro: u8,
+    pub minor: u8,
+    pub major: u8,
+}
+
+impl Version {
+    pub fn is_zero(&self) -> bool {
+        self.build == 0 && self.micro == 0 && self.minor == 0 && self.major == 0
+    }
+}
+
+impl PartialOrd for Version {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Version {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        Ordering::Equal
+            .then(self.major.cmp(&other.major))
+            .then(self.minor.cmp(&other.minor))
+            .then(self.micro.cmp(&other.micro))
+            .then(self.build.cmp(&other.build))
+    }
+}
+
+impl fmt::Display for Version {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}.{}.{}.{}", self.major, self.minor, self.micro, self.build)
+    }
+}
+
+impl fmt::LowerHex for Version {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{:02x}.{:02x}.{:02x}.{:02x}", self.major, self.minor, self.micro, self.build)
+    }
+}
+
+impl fmt::UpperHex for Version {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{:02X}.{:02X}.{:02X}.{:02X}", self.major, self.minor, self.micro, self.build)
+    }
+}
 
 #[derive(Debug, Copy, Clone, Pod, Zeroable)]
 #[repr(C)]

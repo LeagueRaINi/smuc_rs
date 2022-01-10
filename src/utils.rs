@@ -1,7 +1,13 @@
-use bytemuck::{Pod, Zeroable};
+use std::mem::size_of;
+
+use anyhow::{bail, Result};
+use lzma_rs::lzma_decompress;
 use regex::bytes::Regex;
-use std::cmp::Ordering;
-use std::fmt;
+
+use crate::structs::EfiGuidDefinedSection;
+
+const AGESA_PATTERN: &str = r"(AGESA![0-9a-zA-Z]{0,10}\x00{0,1}[0-9a-zA-Z .\-]+)";
+const AGESA_SECTION_PATTERN: &str = r"\x93\xFD\x21\x9E\x72\x9C\x15\x4C\x8C\x4B\xE7\x7F\x1D\xB2\xD7\x92.{8}(.{4}\x98\x58\x4E\xEE\x14\x39\x59\x42\x9D\x6E\xDC\x7B\xD7\x94\x03\xCF.{4})";
 
 pub fn find_pattern<'a>(data: &'a [u8], pattern: &str) -> Vec<(usize, &'a [u8])> {
     let regex_string = &["(?s-u)", pattern].concat();
@@ -14,56 +20,54 @@ pub fn find_pattern<'a>(data: &'a [u8], pattern: &str) -> Vec<(usize, &'a [u8])>
         .collect()
 }
 
-// amd saves the address memory aligned so we need to convert them
 pub fn resolve_location(location: usize, offset: usize) -> usize {
     (location & 0x00FFFFFF) + offset
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Pod, Zeroable)]
-#[repr(C)]
-pub struct Version {
-    pub build: u8,
-    pub micro: u8,
-    pub minor: u8,
-    pub major: u8,
-}
-
-impl Version {
-    pub fn is_zero(&self) -> bool {
-        self.build == 0 && self.micro == 0 && self.minor == 0 && self.major == 0
+pub fn try_find_agesa(data: &[u8]) -> Result<Vec<String>> {
+    let agesa = find_pattern(&data, AGESA_PATTERN)
+        .into_iter()
+        .map(|(_, x)| x.iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>())
+        .collect::<Vec<_>>();
+    if !agesa.is_empty() {
+        return Ok(agesa);
     }
-}
 
-impl PartialOrd for Version {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
+    let section_pat = find_pattern(&data, AGESA_SECTION_PATTERN);
+    if section_pat.is_empty() {
+        bail!("Could not find section pattern")
     }
-}
 
-impl Ord for Version {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        Ordering::Equal
-            .then(self.major.cmp(&other.major))
-            .then(self.minor.cmp(&other.minor))
-            .then(self.micro.cmp(&other.micro))
-            .then(self.build.cmp(&other.build))
-    }
-}
+    let mut agesa: Vec<String> = Vec::new();
 
-impl fmt::Display for Version {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}.{}.{}.{}", self.major, self.minor, self.micro, self.build)
-    }
-}
+    for (addr, bytes) in section_pat {
+        let guid_section_header = match EfiGuidDefinedSection::new(&bytes) {
+            Ok(header) => header,
+            Err(err) => {
+                log::error!("{}", err);
+                continue;
+            },
+        };
 
-impl fmt::LowerHex for Version {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{:02x}.{:02x}.{:02x}.{:02x}", self.major, self.minor, self.micro, self.build)
-    }
-}
+        let mut enc_body = &data[addr + size_of::<EfiGuidDefinedSection>()..]
+            [..guid_section_header.get_body_size()];
+        let mut dec_body: Vec<u8> = Vec::new();
 
-impl fmt::UpperHex for Version {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{:02X}.{:02X}.{:02X}.{:02X}", self.major, self.minor, self.micro, self.build)
+        if lzma_decompress(&mut enc_body, &mut dec_body).is_err() {
+            log::error!("Could not decompress section at {:08X}", addr);
+            continue;
+        }
+
+        match find_pattern(&dec_body, AGESA_PATTERN).first().map(|(_, x)| {
+            x.iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>()
+        }) {
+            Some(x) => agesa.push(x),
+            None => {
+                log::error!("Could not find agesa in volumes from section at {:08X}", addr);
+                continue;
+            },
+        }
     }
+
+    Ok(agesa)
 }
