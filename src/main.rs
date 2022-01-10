@@ -48,19 +48,22 @@ fn try_find_agesa(data: &[u8]) -> Result<Vec<String>> {
             [..guid_section_header.get_body_size()];
         let mut dec_body: Vec<u8> = Vec::new();
 
+        if lzma_decompress(&mut enc_body, &mut dec_body).is_err() {
+            log::error!("Could not decompress section");
+            continue;
+        }
+
         // TODO!: pray to god that the agesa strings in this decompressed section are all the same
-        if lzma_decompress(&mut enc_body, &mut dec_body).is_ok() {
-            match find_pattern(&dec_body, r"(AGESA![0-9a-zA-Z]{0,10}\x00{0,1}[0-9a-zA-Z .\-]+)")
-                .first()
-                .map(|(_, x)| {
-                    x.iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>()
-                }) {
-                Some(x) => agesa.push(x),
-                None => {
-                    log::error!("Could not find agesa in dxe volume");
-                    continue;
-                },
-            }
+        match find_pattern(&dec_body, r"(AGESA![0-9a-zA-Z]{0,10}\x00{0,1}[0-9a-zA-Z .\-]+)")
+            .first()
+            .map(|(_, x)| {
+                x.iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>()
+            }) {
+            Some(x) => agesa.push(x),
+            None => {
+                log::error!("Could not find agesa in volume");
+                continue;
+            },
         }
     }
 
