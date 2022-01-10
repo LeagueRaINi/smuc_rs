@@ -26,9 +26,7 @@ fn parse_combo_directory(data: &[u8], address: usize, offset: usize) -> Iter<'_>
 
 fn parse_psp_entry<'a>(data: &'a [u8], entry: &PspDirectoryEntry, offset: usize) -> Iter<'a> {
     match entry.kind {
-        // PSP Level 2 Directory
         0x40 | 0x70 => parse_directory(data, entry.location as usize, offset),
-        // SMU Firmware
         0x08 | 0x12 => {
             let location = resolve_location(entry.location as usize, offset);
 
@@ -44,7 +42,6 @@ fn parse_psp_entry<'a>(data: &'a [u8], entry: &PspDirectoryEntry, offset: usize)
 
             header(location, entry_header)
         },
-        // Irrelevant for us
         _ => Box::new(iter::empty()),
     }
 }

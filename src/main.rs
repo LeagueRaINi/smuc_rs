@@ -2,7 +2,6 @@ mod macros;
 mod parsers;
 mod structs;
 mod utils;
-mod version;
 
 use std::cmp::Ordering;
 use std::mem::size_of;
@@ -12,9 +11,10 @@ use std::{env, fs};
 use anyhow::{bail, Result};
 use bytemuck::try_from_bytes;
 use clap::Parser;
+use lzma_rs::lzma_decompress;
 
 use crate::parsers::parse_directories;
-use crate::structs::FirmwareEntryTable;
+use crate::structs::{EfiGuidDefinedSection, FirmwareEntryTable};
 use crate::utils::find_pattern;
 
 #[derive(Parser, Debug)]
@@ -24,8 +24,52 @@ struct Opt {
     path: PathBuf,
 }
 
+fn try_find_agesa(data: &[u8]) -> Result<Vec<String>> {
+    let section_pat = find_pattern(
+        &data,
+        r"\x93\xFD\x21\x9E\x72\x9C\x15\x4C\x8C\x4B\xE7\x7F\x1D\xB2\xD7\x92.{8}(.{4}\x98\x58\x4E\xEE\x14\x39\x59\x42\x9D\x6E\xDC\x7B\xD7\x94\x03\xCF.{4})",
+    );
+    if section_pat.is_empty() {
+        bail!("Could not find dxe volume pattern")
+    }
+
+    let mut agesa: Vec<String> = Vec::new();
+
+    for (addr, bytes) in section_pat {
+        let guid_section_header = match EfiGuidDefinedSection::new(&bytes) {
+            Ok(header) => header,
+            Err(err) => {
+                log::error!("{}", err);
+                continue;
+            },
+        };
+
+        let mut enc_body = &data[addr + size_of::<EfiGuidDefinedSection>()..]
+            [..guid_section_header.get_body_size()];
+        let mut dec_body: Vec<u8> = Vec::new();
+
+        // TODO!: pray to god that the agesa strings in this decompressed section are all the same
+        if lzma_decompress(&mut enc_body, &mut dec_body).is_ok() {
+            match find_pattern(&dec_body, r"(AGESA![0-9a-zA-Z]{0,10}\x00{0,1}[0-9a-zA-Z .\-]+)")
+                .first()
+                .map(|(_, x)| {
+                    x.iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>()
+                }) {
+                Some(x) => agesa.push(x),
+                None => {
+                    log::error!("Could not find agesa in dxe volume");
+                    continue;
+                },
+            }
+        }
+    }
+
+    Ok(agesa)
+}
+
 fn main() -> Result<()> {
     env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or_else(|_| "info".into()));
+
     pretty_env_logger::init();
 
     let Opt { path } = Opt::parse();
@@ -33,21 +77,19 @@ fn main() -> Result<()> {
     let file_name = path.file_name().expect("Could not get file name");
     let data = fs::read(&path).expect("Could not read file");
 
-    log::info!("BIOS: {} ({} KB)", file_name.to_str().unwrap(), data.len() / 1024);
-
-    // TODO!: this doesnt detect all smu strings (tho in the roms where it doesnt i also couldnt find any tbh)
-    let agesa = find_pattern(&data, r"(AGESA![0-9a-zA-Z]{0,10}\x00{0,1}[0-9a-zA-Z .\-]+)")
-        .into_iter()
-        .map(|(_, x)| x.iter().map(|&x| if x == 0 { ' ' } else { x as char }).collect::<String>())
-        .collect::<Vec<String>>();
-
-    if !agesa.is_empty() {
-        log::info!("AGESA: {:?}", agesa);
-    }
+    log::info!("FILE: {} ({} MB)", file_name.to_str().unwrap(), data.len() / 1024 / 1024);
 
     let fet_headers = find_pattern(&data, r"\xFF{16}(\xAA\x55\xAA\x55.{76})\xFF{16}");
     if fet_headers.is_empty() {
         bail!("Could not find FET header(s)!");
+    }
+
+    let agesa = try_find_agesa(&data)?;
+
+    log::info!("AGESA: {:?}", agesa);
+
+    if fet_headers.len() != agesa.len() {
+        log::warn!("Found more FET headers than AGESA versions!");
     }
 
     for (addr, bytes) in fet_headers {
@@ -81,13 +123,15 @@ fn main() -> Result<()> {
             (Err(_), Err(_)) => l_loc.cmp(r_loc),
         });
 
+        log::info!("FirmwareEntryTable: {:08X} ({} entries)", addr, entries.len());
+
         // Print entries and errors
         for (location, entry) in entries {
             match entry {
                 Err(error) => log::error!("Location {:08X}, {:?}", location, error),
                 Ok(entry) => {
                     log::info!(
-                        "Location {:08X}, Size {:08X} ({:>3} KB) // {:X} {}",
+                        "  Location {:08X}, Size {:08X} ({:>3} KB) // {:X} {}",
                         location,
                         entry.packed_size,
                         entry.packed_size / 1024,

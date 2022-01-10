@@ -114,6 +114,33 @@ impl PspEntryHeader {
     }
 }
 
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct EfiGuidDefinedSection {
+    pub size: [u8; 0x3],
+    pub rsvd_03: [u8; 0x1],
+    pub guid: [u8; 0x10],
+    pub rsvd_14: [u8; 0x4],
+}
+
+impl EfiGuidDefinedSection {
+    pub fn new(data: &[u8]) -> Result<&EfiGuidDefinedSection> {
+        let data = match data.get(..size_of::<Self>()) {
+            None => bail!("Could not fetch guid defined section header"),
+            Some(data) => data,
+        };
+
+        try_from_bytes::<EfiGuidDefinedSection>(data)
+            .context("Could not parse guid defined section header")
+    }
+    pub fn get_full_size(&self) -> usize {
+        (self.size[0] as u32 | (self.size[1] as u32) << 8 | (self.size[2] as u32) << 16) as usize
+    }
+    pub fn get_body_size(&self) -> usize {
+        self.get_full_size() - size_of::<Self>()
+    }
+}
+
 make_dir!(pub ComboDirectory, ComboDirectoryHeader, ComboDirectoryEntry);
 make_dir!(pub PspDirectory, DirectoryHeader, PspDirectoryEntry);
 
@@ -122,3 +149,4 @@ assert_eq_size!([u8; 0x10], DirectoryHeader);
 assert_eq_size!([u8; 0x20], ComboDirectoryHeader);
 assert_eq_size!([u8; 0x10], ComboDirectoryEntry);
 assert_eq_size!([u8; 0x100], PspEntryHeader);
+assert_eq_size!([u8; 0x18], EfiGuidDefinedSection);
