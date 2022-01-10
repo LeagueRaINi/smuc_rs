@@ -30,7 +30,7 @@ fn try_find_agesa(data: &[u8]) -> Result<Vec<String>> {
         r"\x93\xFD\x21\x9E\x72\x9C\x15\x4C\x8C\x4B\xE7\x7F\x1D\xB2\xD7\x92.{8}(.{4}\x98\x58\x4E\xEE\x14\x39\x59\x42\x9D\x6E\xDC\x7B\xD7\x94\x03\xCF.{4})",
     );
     if section_pat.is_empty() {
-        bail!("Could not find dxe volume pattern")
+        bail!("Could not find section pattern")
     }
 
     let mut agesa: Vec<String> = Vec::new();
