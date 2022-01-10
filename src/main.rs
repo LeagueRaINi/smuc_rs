@@ -57,10 +57,12 @@ fn try_find_agesa(data: &[u8]) -> Result<Vec<String>> {
                 }) {
                 Some(x) => agesa.push(x),
                 None => {
-                    log::error!("Could not find agesa in dxe volume");
+                    log::error!("Could not find agesa in volume");
                     continue;
                 },
             }
+        } else {
+            log::error!("Could not decompress section")
         }
     }
 
