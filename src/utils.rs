@@ -51,7 +51,7 @@ pub fn try_find_agesa(data: &[u8]) -> Result<Vec<String>> {
 
         let mut enc_body = match data
             .get(addr + size_of::<EfiGuidDefinedSection>()..)
-            .and_then(|x| x.get(..guid_section_header.get_body_size()))
+            .and_then(|bytes| bytes.get(..guid_section_header.get_body_size()))
         {
             Some(body) => body,
             None => {
