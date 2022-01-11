@@ -49,8 +49,17 @@ pub fn try_find_agesa(data: &[u8]) -> Result<Vec<String>> {
             },
         };
 
-        let mut enc_body = &data[addr + size_of::<EfiGuidDefinedSection>()..]
-            [..guid_section_header.get_body_size()];
+        let mut enc_body = match data
+            .get(addr + size_of::<EfiGuidDefinedSection>()..)
+            .and_then(|x| x.get(..guid_section_header.get_body_size()))
+        {
+            Some(body) => body,
+            None => {
+                log::error!("Could not fetch compressed body at {:08X}", addr);
+                continue;
+            },
+        };
+
         let mut dec_body: Vec<u8> = Vec::new();
 
         if lzma_decompress(&mut enc_body, &mut dec_body).is_err() {
