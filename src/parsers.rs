@@ -79,5 +79,6 @@ pub fn parse_directories(
     let mut vec = parse_directory(data, address, offset).collect::<Vec<_>>();
     vec.sort_by_key(|&(location, _)| location);
     vec.dedup_by_key(|&mut (location, _)| location);
+    // TODO!: dedup entries with the same version and packed size
     vec
 }

@@ -4,9 +4,10 @@ mod structs;
 mod utils;
 
 use std::cmp::Ordering;
+use std::io::Read;
 use std::mem::size_of;
 use std::path::PathBuf;
-use std::{env, fs};
+use std::{env, fs, io};
 
 use anyhow::{bail, Result};
 use bytemuck::try_from_bytes;
@@ -88,6 +89,9 @@ fn main() -> Result<()> {
             }
         }
     }
+
+    // TODO!: less ghetto readline
+    let _ = io::stdin().read(&mut [0u8]).unwrap();
 
     Ok(())
 }
