@@ -79,6 +79,12 @@ pub fn parse_directories(
     let mut vec = parse_directory(data, address, offset).collect::<Vec<_>>();
     vec.sort_by_key(|&(location, _)| location);
     vec.dedup_by_key(|&mut (location, _)| location);
-    // TODO!: dedup entries with the same version and packed size
+    vec.sort_by(|(_, res1), (_, res2)| match (res1, res2) {
+        (Ok(h1), Ok(h2)) => h1.packed_size.cmp(&h2.packed_size),
+        (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+        (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+        (Err(_), Err(_)) => std::cmp::Ordering::Equal,
+    });
+    vec.dedup_by(|(_, res1), (_, res2)| matches!((res1, res2), (Ok(h1), Ok(h2)) if h1.packed_size == h2.packed_size));
     vec
 }
