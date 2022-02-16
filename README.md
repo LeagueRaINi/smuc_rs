@@ -1,5 +1,8 @@
-## Tool for listing SMUs inside an AM4 bios file
+# Tool for listing SMUs inside an AM4 bios file
 This is very much still a work in progress so beware of that when using info provided by this tool
+
+## Supports
+* Every AM4 Bios should work including Epyc and Threadripper
 
 ![Preview](/.github/resources/preview.png)
 
