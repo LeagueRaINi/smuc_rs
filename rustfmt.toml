@@ -1,0 +1,9 @@
+edition = "2021"
+
+match_block_trailing_comma = true
+imports_granularity = "Module"
+use_field_init_shorthand = true
+use_small_heuristics = "Max"
+
+unstable_features = true
+inline_attribute_width = 75
