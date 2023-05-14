@@ -19,7 +19,6 @@ use crate::utils::{find_pattern, try_find_agesa};
 #[derive(Parser, Debug)]
 #[clap(about, author, version)]
 struct Opt {
-    #[cfg_attr(debug_assertions, structopt(default_value = "C:\\Users\\RaZoR\\Desktop\\[VOL]"))]
     path: PathBuf,
 }
 
