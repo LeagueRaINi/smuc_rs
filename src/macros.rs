@@ -2,6 +2,7 @@
 macro_rules! make_dir {
     ($visibility:vis $name:ident, $header_type:ty, $entry_type:ty) => {
         #[allow(dead_code)]
+        #[derive(Debug)]
         $visibility struct $name<'a> {
             $visibility address: usize,
             $visibility header: &'a $header_type,

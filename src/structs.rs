@@ -8,6 +8,20 @@ use static_assertions::assert_eq_size;
 
 use crate::make_dir;
 
+#[derive(Debug, Copy, Clone)]
+pub enum Generation {
+    Zen1,
+    Zen2,
+    Zen3,
+    Unknown(u32),
+}
+
+impl fmt::Display for Generation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{self:X?}")
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Pod, Zeroable)]
 #[repr(C)]
 pub struct Version {
@@ -103,6 +117,18 @@ pub struct ComboDirectoryEntry {
     pub location: u64,
 }
 
+impl ComboDirectoryEntry {
+    // Credits: https://github.com/PSPReverse/PSPTool
+    pub fn try_get_gen(&self) -> Generation {
+        match self.id.to_be_bytes() {
+            [0xBC, 0x0A, 0x00, ..] | [0xBC, 0x09, 0x00, ..] => Generation::Zen1,
+            [0xBC, 0x0A, 0x01, ..] | [0xBC, 0x0B, 0x05, ..] => Generation::Zen2,
+            [0xBC, 0x0C, 0x01, ..] | [0xBC, 0x0C, 0x00, ..] => Generation::Zen3,
+            _ => Generation::Unknown(self.id),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
 pub struct PspEntryHeader {
@@ -142,13 +168,13 @@ impl PspEntryHeader {
     pub fn try_get_processor_arch(&self) -> Option<&'static str> {
         let Version { major, minor, .. } = self.get_version();
         match [major, minor] {
-            [0x00, 0x38] => Some("Vermeer"),        // Ryzen 5XXX
+            [0x00, 0x37] => Some("Vermeer"),        // Ryzen 5XXX
             [0x00, 0x2E] => Some("Matisse"),        // Ryzen 3XXX
             [0x00, 0x2B] => Some("Pinnacle Ridge"), // Ryzen 2XXX
             [0x00, 0x19] => Some("Summit Ridge"),   // Ryzen 1XXX
 
             [0x00, 0x40] => Some("Cezanne"),        // Ryzen 5XXX (APU)
-            [0x00, 0x37] => Some("Renoir"),         // Ryzen 4XXX (APU)
+            [0x00, 0x38] => Some("Renoir"),         // Ryzen 4XXX (APU)
             [0x04, 0x1E] => Some("Picasso"),        // Ryzen 3XXX (APU)
             [0x00, 0x25] => Some("Raven Ridge 2"),  // Ryzen 2XXX (APU - Refresh)
             [0x00, 0x1E] => Some("Raven Ridge"),    // Ryzen 2XXX (APU)

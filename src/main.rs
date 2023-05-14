@@ -19,7 +19,7 @@ use crate::utils::{find_pattern, try_find_agesa};
 #[derive(Parser, Debug)]
 #[clap(about, author, version)]
 struct Opt {
-    #[cfg_attr(debug_assertions, structopt(default_value = "./resources/E7B93AMS.1E0"))]
+    #[cfg_attr(debug_assertions, structopt(default_value = "C:\\Users\\RaZoR\\Desktop\\[VOL]"))]
     path: PathBuf,
 }
 
@@ -63,19 +63,20 @@ fn main() -> Result<()> {
         log::info!("");
         log::info!("[{:08X}] FirmwareEntryTable", addr);
 
-        for (location, entry) in parse_directories(&data, fet.psp as usize, addr - 0x20000) {
+        for (location, entry, generation) in
+            parse_directories(&data, fet.psp as usize, addr - 0x20000)
+        {
             match entry {
                 Err(error) => log::error!("Location {:08X}, {:?}", location, error),
-                Ok(entry) => {
-                    log::info!(
-                        "   Location {:08X}, Size {:08X} ({:>3} KB) // {} {}",
-                        location,
-                        entry.packed_size,
-                        entry.packed_size / 1024,
-                        entry.get_version(),
-                        entry.try_get_processor_arch().unwrap_or("Unknown"),
-                    );
-                },
+                Ok(entry) => log::info!(
+                    "   Location {:08X}, Size {:08X} ({:>3} KB) // {:?} {} {}",
+                    location,
+                    entry.packed_size,
+                    entry.packed_size / 1024,
+                    generation,
+                    entry.get_version(),
+                    entry.try_get_processor_arch().unwrap_or("Unknown"),
+                ),
             }
         }
     }
